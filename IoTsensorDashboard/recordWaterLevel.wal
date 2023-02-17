@@ -1,0 +1,64 @@
+defVar --name waterLevel --type String
+defVar --name currentDateAndTime --type DateTime
+defVar --name myPath --type String
+defVar --name csvFilePathSuffix --type String --value "\\Box\\RPA Scripts\\Lake Travis Water Level\\Lake Travis Water Level.txt"
+defVar --name csvFileExists --type Boolean --value False
+defVar --name waterLevel_numeric --type Numeric
+defVar --name waterLevel_extracted --type String
+defVar --name LCRAhydromet --type DataTable
+defVar --name lakeTravisDTflag --type Boolean
+defVar --name lakeTravisDTrow --type Numeric
+defVar --name lakeBuchananDTflag --type Boolean
+defVar --name lakeBuchananDTrow --type Numeric
+defVar --name waterLevel_extracted_buchanan --type String
+defVar --name waterLevel_numeric_buchanan --type Numeric
+getSpecialFolder --folder "UserProfile" myPath=value
+//goSub --label csvFileSetup
+webStart --name "water-level" --type "Chrome"
+goSub --label getLCRAhydrometData
+//goSub --label formatData
+getCurrentDateAndTime --localorutc "LocalTime" currentDateAndTime=value
+webClose --name "water-level"
+beginSub --name csvFileSetup
+	ifFile --file "${myPath}${csvFilePathSuffix}" csvFileExists=value
+	if --left "${csvFileExists}" --operator "Equal_To" --right True
+		return
+	elseIf --left "${csvFileExists}" --operator "Equal_To" --right False
+		writeToFile --value "date_GMT-6,water_level_ft" --file "${myPath}${csvFilePathSuffix}" --encoding "UTF8"
+		return
+	endIf
+endSub
+beginSub --name formatData
+	getRegex --text "${waterLevel}" --regexPattern "^\\d+\\.\\d+" --regexOptions "Singleline" --comment "Extract the numeric water level value from ${waterLevel} variable." waterLevel_extracted=value
+	convertStringToNumber --culture "en-US" --text "${waterLevel_extracted}" --allowdecimalpoint  waterLevel_numeric=value
+	return
+endSub
+beginSub --name getLakeTravisWL
+//writeToFile --value "${currentDateAndTime},${waterLevel_numeric}" --file "${myPath}\\Box\\RPA Scripts\\Lake Travis Water Level\\Lake Travis Water Level.txt" --encoding "UTF8" --writeasnewline
+	findTableCell --dataTable ${LCRAhydromet} --value "Mansfield Dam" --search "Rows" --index 14 --direction "Left2RightTop2Bottom" --occurrencetype "First" lakeTravisDTflag=success lakeTravisDTrow=row
+	if --left "${lakeTravisDTflag}" --operator "Equal_To" --right True
+		getTableCell --dataTable ${LCRAhydromet} --column 3 --row ${lakeTravisDTrow} waterLevel_extracted=value
+		convertStringToNumber --culture "en-US" --text "${waterLevel_extracted}" --allowdecimalpoint  waterLevel_numeric=value
+		//updateCounter --project "Data Science Capabilities with IBM RPA" --counter Lake_Travis --value ${waterLevel_numeric}
+	endIf
+	logMessage --message " ${lakeTravisDTflag}\r\nWater level for Lake Travis is ${waterLevel_extracted}" --type "Info"
+endSub
+beginSub --name getLakeBuchananWL
+	findTableCell --dataTable ${LCRAhydromet} --value "Buchanan Dam" --search "Rows" --index 2 --direction "Left2RightTop2Bottom" --occurrencetype "First" lakeBuchananDTflag=success lakeBuchananDTrow=row
+	if --left "${lakeTravisDTflag}" --operator "Equal_To" --right True
+		getTableCell --dataTable ${LCRAhydromet} --column 3 --row ${lakeBuchananDTrow} waterLevel_extracted_buchanan=value
+		convertStringToNumber --culture "en-US" --text "${waterLevel_extracted_buchanan}" --allowdecimalpoint  --allowthousands  waterLevel_numeric_buchanan=value
+		//updateCounter --project "Data Science Capabilities with IBM RPA" --counter Lake_Buchanan --value ${waterLevel_numeric_buchanan}
+		logMessage --message "${lakeBuchananDTflag}\r\nWater level for Lake Buchanan is ${waterLevel_numeric_buchanan}" --type "Info"
+	endIf
+	return
+endSub
+beginSub --name getLCRAhydrometData
+	webNavigate --url "https://hydromet.lcra.org/home/GaugeDataList/?siteNumber=1995&siteType=lakelevel"
+	webGetTable --removehtml  --selector "XPath" --xpath "//*[@id=\"Records\"]/table" LCRAhydromet=value
+//logMessage --message "${LCRAhydromet}" --type "Info"
+	goSub --label getLakeTravisWL
+//logMessage --message "Returned from the get lake travis data sub" --type "Info"
+	goSub --label getLakeBuchananWL
+	return
+endSub
